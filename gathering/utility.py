@@ -29,4 +29,8 @@ def download_video(src) -> Optional[bytes]:
         if src is None:
             return None
 
-    return requests.get(src).content
+    for retry in range(6):
+        try:
+            return requests.get(src).content
+        except requests.exceptions.SSLError:
+            time.sleep(1 << retry)

@@ -133,7 +133,7 @@ URL_LIST = 'https://www.signasl.org/dictionary/{letter}/{page}'
 URL_SIGN = 'https://www.signasl.org/sign/{word}'
 
 DST_PATH = os.path.join(constants.DATASET_PATH, 'external', 'signasl')
-video_folder = os.path.join(DST_PATH, 'videos')
+videos_folder = os.path.join(DST_PATH, 'videos')
 
 if __name__ == '__main__':
     parse_signasl()

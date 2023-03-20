@@ -28,3 +28,13 @@ def seed_everything(seed: int = 42):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+
+
+
+def listfiles(path):
+    result = []
+    for folder, folders, files in os.walk(path):
+        name = folder[len(path) + 1:]
+        for file in files:
+            result.append(os.path.join(name, file))
+    return result

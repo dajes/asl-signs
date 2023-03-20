@@ -17,8 +17,8 @@ from gathering import signasl
 
 DATA_URL = 'https://raw.githubusercontent.com/dxli94/WLASL/ac00e6be631c1a2a486621b65f202219f3964d6b/start_kit/WLASL_v0.3.json'
 DST_PATH = os.path.join(constants.DATASET_PATH, 'external', 'wlasl')
-video_folder = os.path.join(DST_PATH, 'full_videos')
-iso_folder = os.path.join(DST_PATH, 'videos')
+full_folder = os.path.join(DST_PATH, 'full_videos')
+videos_folder = os.path.join(DST_PATH, 'videos')
 
 
 def download_wsasl():
@@ -54,8 +54,8 @@ def download_wsasl():
         with open(db_path, 'a') as f:
             f.write('i,j,label,signer_id,video_src')
 
-    os.makedirs(video_folder, exist_ok=True)
-    possibly_cached = [signasl.video_folder, video_folder]
+    os.makedirs(full_folder, exist_ok=True)
+    possibly_cached = [signasl.videos_folder, full_folder]
 
     pbar = tqdm(total=len(sorted_videos), initial=max_i, desc='Downloading videos')
 
@@ -71,7 +71,9 @@ def download_wsasl():
                 break
         if video_path is None:
             video_data = download_video(video_url)
-            video_path = os.path.join(video_folder, f'{video_id}.mp4')
+            if video_data is None:
+                continue
+            video_path = os.path.join(full_folder, f'{video_id}.mp4')
             with open(video_path, 'wb') as f:
                 f.write(video_data)
 
@@ -85,14 +87,14 @@ def download_wsasl():
         cap = cv2.VideoCapture(video_path)
         writers = {}
 
-        os.makedirs(iso_folder, exist_ok=True)
+        os.makedirs(videos_folder, exist_ok=True)
         j = 1
         read, frame = cap.read()
         while read:
             for (start, end), (label, signer_id, fps) in intervals.items():
                 if j == start:
                     writers[(start, end)] = cv2.VideoWriter(
-                        os.path.join(iso_folder, f'{video_id}_{start}_{end}.mp4'),
+                        os.path.join(videos_folder, f'{video_id}_{start}_{end}.mp4'),
                         cv2.VideoWriter_fourcc(*'mp4v'),
                         fps, (frame.shape[1], frame.shape[0])
                     )
