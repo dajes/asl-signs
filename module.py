@@ -1,5 +1,6 @@
 import os
 import warnings
+from typing import List
 
 import pytorch_lightning as pl
 import torch
@@ -26,9 +27,12 @@ state['master'] = os.environ.get('LOCAL_RANK', '0') == '0'
 
 
 class Module(pl.LightningModule):
+    CAUSAL_FRACTION = 1 / 8
+    CAUSAL_FORESIGHT = 1 / 4
+
     def __init__(
             self, working_dir: str, epochs: int, steps_per_epoch: int, lr: float,
-            in_features: int, n_features: int, n_classes: int, max_len: int, drop_rate: float = 0.1,
+            in_features: int, n_features: int, n_outputs: List[int], max_len: int, drop_rate: float = 0.1,
             depth: int = 6, num_heads: int = 8, mlp_ratio=4.,
             model_type: str = 'mlp'
     ):
@@ -44,36 +48,79 @@ class Module(pl.LightningModule):
             'mlp': MLPArchitecture,
             'lstm': LSTMArchitecture,
             'transformer': TransformerArchitecture,
-        }[model_type](in_features, n_features, n_classes, max_len, drop_rate, depth, num_heads, mlp_ratio)
+        }[model_type](in_features, n_features, n_outputs, max_len, drop_rate, depth, num_heads, mlp_ratio)
         self.criterion = torch.nn.CrossEntropyLoss()
+        self.regression = torch.nn.SmoothL1Loss()
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, x, task_n):
+        return self.model(x, task_n)
 
-    def forward_loss(self, x, y):
-        y_hat = self(x)
+    @torch.compile
+    def forward_loss(self, x, y, ds_num):
+        y_hat = self(x, ds_num)
 
-        loss = self.criterion(y_hat, y)
+        if ds_num:
+            loss = self.criterion(y_hat, y)
+        else:
+            pad = int(self.CAUSAL_FORESIGHT * x.shape[1]) or 1
+            x_hat = y_hat[:, :-pad]
+            x_true = x[:, pad:]
+            mask = x_true != 0
+            if torch.any(mask):
+                loss = self.regression(x_hat[mask], x_true[mask]) * 20
+            else:
+                loss = 0 * y_hat[0, 0, 0]
         return loss, y_hat
 
-    def calculate_loss(self, batch):
-        features, y = batch
+    def calculate_loss(self, batch, batch_idx):
+        features, y, ds_num = batch
         features = features.to(self.device).to(self.dtype)
         y = y.to(self.device).long()
-        loss, y_hat = self.forward_loss(features, y)
+
+        if self.CAUSAL_FRACTION == 0:
+            causal = False
+        elif self.CAUSAL_FRACTION == 1:
+            causal = True
+        elif self.CAUSAL_FRACTION > .5:
+            every_n = int(1 / (1 - self.CAUSAL_FRACTION))
+            causal = (1 + batch_idx + self.local_rank) % every_n != 0
+        else:
+            every_n = int(1 / self.CAUSAL_FRACTION)
+            causal = (batch_idx + self.local_rank) % every_n == 0
+
+        loss, y_hat = self.forward_loss(features, y, 0 if causal else ds_num)
+        if causal:
+            return loss, None, ds_num
+
         with torch.no_grad():
             acc = (y_hat.argmax(dim=-1) == y).float().mean()
-        return loss, acc
+        return loss, acc, ds_num
+
+    def calculate_loss_val(self, batch):
+        features, y, ds_num = batch
+        features = features.to(self.device).to(self.dtype)
+        y = y.to(self.device).long()
+
+        loss, y_hat = self.forward_loss(features, y, ds_num)
+        causal, _ = self.forward_loss(features, y, 0)
+        with torch.no_grad():
+            acc = (y_hat.argmax(dim=-1) == y).float().mean()
+        return loss, causal, acc, ds_num
 
     def training_step(self, batch, batch_idx):
-        loss, acc = self.calculate_loss(batch)
-        self.log('train/loss', loss.detach(), on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
-        self.log('train/acc', acc, on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
+        loss, acc, ds_num = self.calculate_loss(batch, batch_idx)
+        if acc is None:
+            self.log(f'train/causal{ds_num}', loss.detach(), on_step=False, on_epoch=True, prog_bar=False,
+                     sync_dist=True)
+        else:
+            self.log(f'train/loss{ds_num}', loss.detach(), on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
+            self.log(f'train/acc{ds_num}', acc, on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss, acc = self.calculate_loss(batch)
+        loss, causal, acc, ds_num = self.calculate_loss_val(batch)
         self.log('val/loss', loss.detach(), on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
+        self.log('val/causal', causal.detach(), on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
         self.log('val/acc', acc, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
 
     def configure_optimizers(self, kind='adamw'):

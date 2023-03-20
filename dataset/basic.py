@@ -107,6 +107,8 @@ class BasicDataset(Dataset):
         self.parquets = parquets
         self.participants = participants
         self.labels = labels
+        self.n_outputs = len(np.unique(self.labels))
+        self.ds_num = 1
         self.n_coords = n_coords
         self.max_len = max_len
         self.n_features = len(self.relevant_ids) * self.n_coords
@@ -134,8 +136,8 @@ class BasicDataset(Dataset):
         if os.path.exists(cache_path):
             with open(cache_path, 'rb') as f:
                 data = pickle.loads(f.read())
-            self.datas = data['datas']
-            self.lengths = data['lengths']
+            self.datas = data['datas'].reshape(-1, self.ROWS_PER_FRAME, 3)[:, self.rids]
+            self.lengths = data['lengths'] // self.ROWS_PER_FRAME
             self.cumsum = np.cumsum(self.lengths)
         else:
             datas = []
@@ -151,8 +153,8 @@ class BasicDataset(Dataset):
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             with open(cache_path, 'wb') as f:
                 f.write(dumped)
-            self.datas = datas
-            self.lengths = lengths
+            self.datas = datas.reshape(-1, self.ROWS_PER_FRAME, 3)[:, self.rids]
+            self.lengths = lengths // self.ROWS_PER_FRAME
             self.cumsum = np.cumsum(self.lengths)
 
         return
@@ -168,12 +170,13 @@ class BasicDataset(Dataset):
             start = self.cumsum[item - 1] if item > 0 else 0
             end = start + self.lengths[item]
             data = self.datas[start:end]
+            data = data.reshape((-1, len(self.relevant_ids), 3))
+            relevant_data = data.astype(np.float32)
         else:
             data = read_parquet(path)
-        n_frames = len(data) // self.ROWS_PER_FRAME
-        data = data.reshape((n_frames, self.ROWS_PER_FRAME, 3))
-
-        relevant_data = data[:, self.relevant_ids].astype(np.float32)
+            n_frames = len(data) // self.ROWS_PER_FRAME
+            data = data.reshape((n_frames, self.ROWS_PER_FRAME, 3))
+            relevant_data = data[:, self.relevant_ids].astype(np.float32)
 
         if self.train:
             relevant_data = relevant_data
@@ -188,7 +191,7 @@ class BasicDataset(Dataset):
         data = torch.zeros((len(relevant_data), len(self.relevant_ids), self.n_coords), dtype=torch.float32)
         data[:] = torch.from_numpy(relevant_data[:, :, :self.n_coords])
 
-        return data, label
+        return data, label, self.ds_num
 
     @property
     def collate_fn(self):
@@ -196,7 +199,7 @@ class BasicDataset(Dataset):
         train = self.train
 
         def collate_fn(batch):
-            features, labels = zip(*batch)
+            features, labels, ds_nums = zip(*batch)
             local_max_len = min(max_len, max(len(f) for f in features))
             features_ = []
             for f in features:
@@ -212,6 +215,6 @@ class BasicDataset(Dataset):
             features = features_
             features = torch.stack(features)
             labels = np.stack(labels)
-            return features, torch.from_numpy(labels)
+            return features, torch.from_numpy(labels), ds_nums[0]
 
         return collate_fn

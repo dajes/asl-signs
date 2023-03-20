@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 
 from dataset.basic import BasicDataset
+from dataset.ensemble import DatasetEnsemble
 
 
 class LightData(pl.LightningDataModule):
@@ -11,10 +12,12 @@ class LightData(pl.LightningDataModule):
     def __init__(self, path, n_coords, max_len, batch_size, steps_per_epoch, epochs, num_workers):
         super().__init__()
         ds = BasicDataset.from_csv(path, n_coords, max_len)
-        self.train_ds, self.val_ds = ds.random_split(19 / 21)
-        assert np.unique(self.train_ds.labels).shape[0] == 250, "Train dataset should have 250 classes"
-        self.train_ds.load_into_memory()
-        self.train_ds.train = True
+        main_train_ds, self.val_ds = ds.random_split(19 / 21)
+        if num_workers:
+            main_train_ds.load_into_memory()
+        main_train_ds.train = True
+        self.train_ds = DatasetEnsemble([main_train_ds])
+        self.n_outputs = self.train_ds.n_outputs
         self.n_features = ds.n_features
         self.batch_size = batch_size
         self.steps_per_epoch = steps_per_epoch

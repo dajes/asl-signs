@@ -24,7 +24,7 @@ working_dir = numerated_folder(os.path.join(constants.MODELS_PATH, 'asl'))
 session_name = os.path.basename(working_dir)
 module = Module(
     working_dir, constants.EPOCHS, constants.STEPS_PER_EPOCH, constants.LR, data.n_features, constants.N_FEATURES,
-    constants.N_CLASSES, constants.MAX_LEN, constants.DROPOUT,
+    data.n_outputs, constants.MAX_LEN, constants.DROPOUT,
     constants.N_LAYERS, constants.N_HEADS, constants.MLP_RATIO, model_type=constants.ARCHITECTURE,
 )
 if os.path.exists(constants.CHECKPOINT_PATH):
@@ -39,8 +39,8 @@ trainer = pl.Trainer(
     accelerator='gpu',
     devices=constants.DEVICES,
     logger=WandbLogger(session_name, project='ASL') if constants.WORKERS else DummyLogger(),
-    strategy='ddp_find_unused_parameters_false' if constants.DEVICES > 1 else None,
-    precision=16,
+    # strategy='ddp_find_unused_parameters_false' if constants.DEVICES > 1 else None,
+    precision='bf16',
     accumulate_grad_batches=constants.ACCUMULATE,
     gradient_clip_val=1.,
     callbacks=[
