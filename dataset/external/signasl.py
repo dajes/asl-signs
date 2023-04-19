@@ -15,6 +15,13 @@ if __name__ == '__main__':
     paths = [os.path.join('keypoints', l[-2] + '.fp16') for l in lines[1:]]
     signs = [l[1].lower() for l in lines[1:]]
 
+    m = [os.path.exists(os.path.join(folder, p)) for p in paths]
+
+    print(f'Number of missing files: {len(m) - sum(m)} ({1 - sum(m) / len(m):%})')
+
+    paths = [p for p, include in zip(paths, m) if include]
+    signs = [s for s, include in zip(signs, m) if include]
+
     counter = dict(sorted(Counter(signs).items(), key=lambda x: x[1], reverse=True))
     sign2idx = {k: i for i, k in enumerate(counter.keys())}
 
