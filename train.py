@@ -42,15 +42,14 @@ for seed in range(1):
         module.teacher = Module.load_from_checkpoint(constants.TEACHER_PATH, 'cpu')
 
     trainer = pl.Trainer(
-        auto_lr_find=True,
         enable_checkpointing=True,
         max_epochs=constants.EPOCHS,
         check_val_every_n_epoch=1,
         accelerator='gpu',
         devices=constants.DEVICES,
         logger=WandbLogger(session_name, project='ASL') if constants.WORKERS else DummyLogger(),
-        strategy='ddp_find_unused_parameters_false' if isinstance(constants.DEVICES,
-                                                                  list) or constants.DEVICES > 1 else None,
+        strategy='ddp_find_unused_parameters_false' if isinstance(constants.DEVICES, list) or constants.DEVICES > 1
+        else 'auto',
         precision='bf16',
         accumulate_grad_batches=constants.ACCUMULATE,
         gradient_clip_val=1.,
