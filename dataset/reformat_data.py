@@ -11,7 +11,8 @@ from dataset.basic import BasicDataset
 
 def rewrite_parquet(path):
     data = pd.read_parquet(path, columns=['x', 'y', 'z']).values.astype(np.float16)
-    np_path = f'{os.path.splitext(path)[0]}.fp16'
+    np_path = f'{os.path.splitext(path)[0].replace("train_landmark_files", "train_landmark_arrays")}.fp16'
+    os.makedirs(os.path.dirname(np_path), exist_ok=True)
     dumped = data.tobytes()
     with open(np_path, 'wb') as f:
         f.write(dumped)

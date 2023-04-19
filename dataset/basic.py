@@ -94,7 +94,7 @@ class BasicDataset(Dataset):
         assert 0 <= max(mapping.values()) < 250
 
         parquets = np.array(table['path']).tolist()
-        max_prefix = os.path.commonprefix((max(parquets), min(parquets)))
+        max_prefix = os.path.commonprefix((max(parquets), min(parquets))).replace("train_landmark_files", "train_landmark_arrays")
         prefix = os.path.join(os.path.dirname(path), max_prefix)
         labels = np.array([mapping[n] for n in table['sign']], np.uint8)
         parquets = [p[len(max_prefix):] for p in parquets]
