@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,7 @@ from utils import seed_everything
 
 ROWS_PER_FRAME = 543
 
-seed_everything()
+seed_everything(0)
 ds = BasicDataset.from_csv(os.path.join(constants.DATASET_PATH, 'asl-signs', 'train.csv'), 3, 1)
 train_ds, val_ds = ds.random_split(19 / 21)
 
