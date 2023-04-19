@@ -11,7 +11,7 @@ class RotateAugmentation(Augmentation):
         self.angle = angle / 180 * np.pi
 
     def __call__(self, points: np.ndarray):
-        angles = np.random.uniform(-self.angle, self.angle, 3).astype(np.float32)
+        angles = np.random.normal(0, self.angle / 3, size=3).astype(np.float32)
         angles[1:] /= 2
 
         rotation_z = np.array([

@@ -23,7 +23,7 @@ def multi_interp(x, xp, fp):
 
 
 class TemporalAugmentation(Augmentation):
-    def __init__(self, max_len: int, scale: float = 2., dropout: float = .125):
+    def __init__(self, max_len: int, scale: float = 8., dropout: float = 0.1):
         self.max_len = max_len
         self.scale = scale
         self.dropout = dropout
@@ -33,20 +33,24 @@ class TemporalAugmentation(Augmentation):
 
     def __call__(self, points: np.ndarray):
         n_frames = len(points)
-        speed = np.random.uniform(1 / self.scale, self.scale)
+        speed = np.exp(np.random.normal(0, np.log(self.scale) / 4))
 
-        start = np.random.uniform(0, .5)
-        end = n_frames - 1 - np.random.uniform(0, .5)
+        # cut_start, cut_end = np.abs(np.random.normal(0, n_frames / 18, 2)).astype(int)
+        cut_start = 0
+        cut_end = 0
+
+        start = abs(np.random.normal(0, .5 / 3)) + cut_start
+        end = n_frames - cut_end - 1 - abs(np.random.normal(0, .5 / 3))
         m = end - start
 
-        # make linspace not linear but raised to a slightly deviating power from approximately 1/1.2 to 1.2
-        power = np.exp(np.random.uniform(-.2, .2))
+        # make linspace not linear but raised to a slightly deviating power
+        power = np.exp(np.random.normal(0, .05))
 
-        x = (np.linspace(
+        x = ((np.linspace(
             0, 1,
-            int(np.ceil(n_frames * speed)),
+            int(np.ceil((n_frames - cut_end - cut_start) * speed)),
             dtype=np.float32
-        ) ** power) * m + start
+        ) ** power) * m + start) * np.sign(np.random.uniform(-1, 1))
         if len(x) > self.max_len:
             start = np.random.randint(0, len(x) - self.max_len)
             x = x[start:start + self.max_len]
@@ -56,7 +60,6 @@ class TemporalAugmentation(Augmentation):
             drop_points = len(points) - keep_points
         else:
             drop_points = 0
-            # keep_points = len(points)
         if drop_points > 0:
             drops = np.random.uniform(0, 1, points.shape[0])
             threshold = np.partition(drops, drop_points - 1, 0)[drop_points - 1:drop_points]
@@ -171,9 +174,13 @@ def get_interpolations2(points, idxes, x, fill_nans, momentum=1.):
     iss = ps.reshape(-1)
     jss = np.arange(ps.shape[1]).repeat(ps.shape[0]).reshape(-1, ps.shape[0]).T.reshape(-1)
 
-    points_ = points[iss, jss].copy()
+    points_ = points[iss, jss].reshape((4,) + p1s.shape + (points.shape[-1],)).copy()
+    # do not let nans zero interpolation values of neighboring points
+    np.nan_to_num(points_[0], copy=False)
+    np.nan_to_num(points_[3], copy=False)
+
     result = np.sum(np.multiply(
-        points_.reshape((4,) + p1s.shape + (points.shape[-1],)),
+        points_,
         qs.reshape(4, -1, 1, 1)
     ), 0)
 
@@ -198,7 +205,7 @@ class TemporalInterpolation(TemporalAugmentation):
         if fill_nans is None:
             fill_nans = np.random.rand() < .8
         if momentum is None:
-            momentum = np.random.uniform(0, 3)
+            momentum = np.random.normal(0.5, .3)
         return spline_interpolate(x, points, fill_nans, momentum)
 
 
@@ -211,8 +218,8 @@ if __name__ == '__main__':
     points[2, 0, 1:3] = np.nan
 
     n_frames = len(points)
-    x = (np.linspace(0, 1, 100, dtype=np.float32) ** (1 / 1.5)) * (n_frames - 1)
-    kwargs = dict(fill_nans=True, momentum=3)
+    x = (np.linspace(0, 1, 100, dtype=np.float32) ** np.exp(-.0)) * (n_frames - 1)
+    kwargs = dict(fill_nans=True, momentum=0)
     augmented = aug.interpolate(x, points, **kwargs)
     scattered = aug.interpolate(x[::10], points, **kwargs)
 
@@ -223,6 +230,6 @@ if __name__ == '__main__':
         plt.plot(points[:, i, 0], points[:, i, 1], c=colors[i], alpha=.15)
 
     for i in range(augmented.shape[1]):
-        plt.plot(augmented[:, i, 0], augmented[:, i, 1], c=colors[i], alpha=.25)
+        plt.plot(augmented[:, i, 0], augmented[:, i, 1], c=colors[i], alpha=.666)
         plt.scatter(scattered[:, i, 0], scattered[:, i, 1], c=colors[i], marker='x')
     plt.show()
