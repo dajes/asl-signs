@@ -37,6 +37,8 @@ def extract_keypoints(videos_folder):
                 total=len(files) + len(extracted), unit='videos', smoothing=0,
                 initial=len(extracted)
         ):
+            if not keypoints:
+                continue
             save_path = os.path.join(dst_folder, os.path.splitext(name)[0] + '.fp16')
             save_dir = os.path.dirname(save_path)
             if not os.path.exists(save_dir):
