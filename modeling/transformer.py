@@ -21,7 +21,7 @@ class Attention(nn.Module):
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         self.register_buffer("bias", torch.tril(torch.ones(max_len, max_len)).view(1, 1, max_len, max_len))
 
-    def forward(self, x, causal=False):
+    def forward(self, x, causal=False, attn_mask=None):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
 
@@ -30,12 +30,19 @@ class Attention(nn.Module):
         v = qkv[2]
 
         if self.flash:
+            if attn_mask is not None:
+                if causal:
+                    attn_mask = None
+                else:
+                    attn_mask = attn_mask.unsqueeze(1).unsqueeze(2)
             x = torch.nn.functional.scaled_dot_product_attention(
-                q, k, v, attn_mask=None, dropout_p=self.dropout, is_causal=causal)
+                q, k, v, attn_mask=attn_mask, dropout_p=self.dropout, is_causal=causal)
         else:
             attn = (q @ k.transpose(-2, -1)) * self.scale
             if causal:
                 attn = attn.masked_fill(self.bias[:, :, :N, :N] == 0, float('-inf'))
+            elif attn_mask is not None:
+                attn = attn.masked_fill(~attn_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
             attn = attn.softmax(dim=-1)
             attn = self.attn_drop(attn)
             x = attn @ v
@@ -44,16 +51,6 @@ class Attention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
-
-
-class LayerScale(nn.Module):
-    def __init__(self, dim, init_values=1e-5, inplace=False):
-        super().__init__()
-        self.inplace = inplace
-        self.gamma = nn.Parameter(init_values * torch.ones(dim))
-
-    def forward(self, x):
-        return x.mul_(self.gamma) if self.inplace else x * self.gamma
 
 
 def gelu(x):
@@ -74,20 +71,21 @@ class Mlp(nn.Module):
         hidden_features = hidden_features or in_features
         if not isinstance(bias, tuple):
             bias = (bias, bias)
-        if not isinstance(drop, tuple):
-            drop_probs = (drop, drop)
 
         self.fc1 = nn.Linear(in_features, hidden_features, bias=bias[0])
-        self.drop1 = nn.Dropout(drop_probs[0])
+        self.drop = nn.Dropout(drop)
         self.fc2 = nn.Linear(hidden_features, out_features, bias=bias[1])
-        self.drop2 = nn.Dropout(drop_probs[1])
+        self.export = False
 
     def forward(self, x):
         x = self.fc1(x)
-        x = gelu(x)
-        x = self.drop1(x)
+        if self.export:
+            x = gelu(x)
+        else:
+            # a lot less memory consumption and faster training
+            x = torch.nn.functional.gelu(x)
         x = self.fc2(x)
-        x = self.drop2(x)
+        x = self.drop(x)
         return x
 
 
@@ -102,7 +100,7 @@ class Block(nn.Module):
             qkv_bias=False,
             drop=0.,
             attn_drop=0.,
-            norm_layer=nn.LayerNorm
+            norm_layer=nn.BatchNorm1d
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -111,9 +109,9 @@ class Block(nn.Module):
         self.norm2 = norm_layer(dim)
         self.mlp = Mlp(in_features=dim, hidden_features=int(dim * mlp_ratio), drop=drop)
 
-    def forward(self, x, causal=False):
-        x = x + self.attn(self.norm1(x), causal=causal)
-        x = x + self.mlp(self.norm2(x))
+    def forward(self, x, causal=False, attn_mask=None):
+        x = x + self.attn(self.norm1(x.transpose(1, 2)).transpose(1, 2), causal=causal, attn_mask=attn_mask)
+        x = x + self.mlp(self.norm2(x.transpose(1, 2)).transpose(1, 2))
         return x
 
 
@@ -132,13 +130,13 @@ class TransformerEncoder(nn.Module):
                 qkv_bias=qkv_bias,
                 drop=drop_rate,
                 attn_drop=drop_rate,
-                norm_layer=nn.LayerNorm,
+                norm_layer=nn.BatchNorm1d,
             )
             for _ in range(depth)
         ])
 
-    def forward(self, x, causal=False):
+    def forward(self, x, causal=False, attn_mask=None):
         x = self.pos_drop(x)
         for block in self.blocks:
-            x = block(x, causal)
+            x = block(x, causal, attn_mask)
         return x
