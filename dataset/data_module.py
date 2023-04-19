@@ -1,4 +1,3 @@
-import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, RandomSampler
@@ -9,14 +8,23 @@ from dataset.ensemble import DatasetEnsemble
 
 class LightData(pl.LightningDataModule):
 
-    def __init__(self, path, n_coords, max_len, batch_size, steps_per_epoch, epochs, num_workers):
+    def __init__(self, path, n_coords, max_len, batch_size, steps_per_epoch, epochs, num_workers,
+                 external_datasets):
         super().__init__()
         ds = BasicDataset.from_csv(path, n_coords, max_len)
         main_train_ds, self.val_ds = ds.random_split(19 / 21)
         if num_workers:
             main_train_ds.load_into_memory()
         main_train_ds.train = True
-        self.train_ds = DatasetEnsemble([main_train_ds])
+        datasets = [main_train_ds]
+        for ds_num, external_dataset in enumerate(external_datasets, 2):
+            external_dataset = BasicDataset.from_csv(external_dataset, n_coords, max_len)
+            external_dataset.train = True
+            external_dataset.ds_num = ds_num
+            if num_workers:
+                external_dataset.load_into_memory()
+            datasets.append(external_dataset)
+        self.train_ds = DatasetEnsemble(datasets)
         self.n_outputs = self.train_ds.n_outputs
         self.n_features = ds.n_features
         self.batch_size = batch_size
