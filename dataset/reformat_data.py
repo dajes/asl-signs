@@ -21,7 +21,9 @@ def rewrite_parquet(path):
 if __name__ == '__main__':
     ds = BasicDataset.from_csv(os.path.join(constants.DATASET_PATH, 'asl-signs', 'train.csv'))
 
-    paths = [f'{ds.prefix}{ds.parquets[i]}' for i in range(len(ds))]
+    prefix = ds.prefix.replace('train_landmark_arrays', 'train_landmark_files')
+
+    paths = [f'{prefix}{ds.parquets[i]}' for i in range(len(ds))]
 
     with Pool() as p:
         for _ in tqdm(p.imap(rewrite_parquet, paths), total=len(paths)):
