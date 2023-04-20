@@ -248,36 +248,29 @@ class BasicDataset(Dataset):
 
         return data, int(label), self.ds_num
 
-    @property
-    def collate_fn(self):
-        max_len = self.max_len
-        train = self.train
-
-        def collate_fn(batch):
-            features, labels, ds_nums = zip(*batch)
-            features_lengths = [len(f) for f in features]
-            local_max_len = min(max_len, max(features_lengths))
-            starts = [0] * len(features)
-            features_ = []
-            for f, start_ in zip(features, starts):
-                f = preprocess(f, local_max_len)
-                if len(f) < local_max_len:
-                    f = F.pad(f, (0, 0, 0, 0, start_, local_max_len - f.shape[0] - start_), 'constant', 0)
-                elif train:
-                    start = np.random.randint(0, len(f) - local_max_len + 1)
-                    f = f[start:start + local_max_len]
-                elif len(f) > local_max_len:
-                    f = f[:local_max_len]
-                features_.append(f.reshape(f.shape[0], -1))
-            features = features_
-            features = torch.stack(features)
-            labels = np.stack(labels)
-            attn_mask = torch.zeros((len(features), local_max_len), dtype=torch.bool)
-            for i, (l, s) in enumerate(zip(features_lengths, starts)):
-                attn_mask[i, s:s + l] = 1
-            return features, attn_mask, torch.from_numpy(labels), torch.from_numpy(np.array(ds_nums))
-
-        return collate_fn
+    def collate_fn(self, batch):
+        features, labels, ds_nums = zip(*batch)
+        features_lengths = [len(f) for f in features]
+        local_max_len = min(self.max_len, max(features_lengths))
+        starts = [0] * len(features)
+        features_ = []
+        for f, start_ in zip(features, starts):
+            f = preprocess(f, local_max_len)
+            if len(f) < local_max_len:
+                f = F.pad(f, (0, 0, 0, 0, start_, local_max_len - f.shape[0] - start_), 'constant', 0)
+            elif self.train:
+                start = np.random.randint(0, len(f) - local_max_len + 1)
+                f = f[start:start + local_max_len]
+            elif len(f) > local_max_len:
+                f = f[:local_max_len]
+            features_.append(f.reshape(f.shape[0], -1))
+        features = features_
+        features = torch.stack(features)
+        labels = np.stack(labels)
+        attn_mask = torch.zeros((len(features), local_max_len), dtype=torch.bool)
+        for i, (l, s) in enumerate(zip(features_lengths, starts)):
+            attn_mask[i, s:s + l] = 1
+        return features, attn_mask, torch.from_numpy(labels), torch.from_numpy(np.array(ds_nums))
 
 
 def __visualize_keypoints():
