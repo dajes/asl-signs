@@ -8,6 +8,7 @@ import torch
 
 import constants
 from architecture.linear import LinearArchitecture
+from architecture.llama import LlamaArchitecture
 from architecture.lstm import LSTMArchitecture
 from architecture.mlp import MLPArchitecture
 from architecture.transformer import TransformerArchitecture
@@ -39,7 +40,7 @@ class Module(pl.LightningModule):
             in_features: int, n_features: int, n_outputs: List[int], max_len: int, drop_rate: float = 0.1,
             depth: int = 6, num_heads: int = 8, mlp_ratio=4.,
             model_type: str = 'transformer', causal_foresight: int = 1, use_ema: bool = True,
-            label_smoothing: float = 0., mixup: float = .2, n_coords: int = 2
+            label_smoothing: float = 0., mixup: float = .2, mixup_elements: int = 2, n_coords: int = 2
     ):
         super().__init__()
         self.working_dir = working_dir
@@ -56,12 +57,13 @@ class Module(pl.LightningModule):
             'mlp': MLPArchitecture,
             'lstm': LSTMArchitecture,
             'transformer': TransformerArchitecture,
+            'llama': LlamaArchitecture,
         }[model_type](in_features, n_features, n_outputs, max_len, drop_rate, depth, num_heads, mlp_ratio,
                       causal_foresight)
         self.model_ema = EMA(self.model) if use_ema else None
         self.criterion = MultiCrossentropyLoss(reduction='sum', label_smoothing=label_smoothing)
         self.regression = torch.nn.SmoothL1Loss(reduction='sum') if self.causal_foresight > 0 else None
-        self.mixup = Mixup(self.n_coords, mixup)
+        self.mixup = Mixup(self.n_coords, mixup, instances=mixup_elements)
 
     def forward(self, x, task_n, attn_mask):
         if not self.training and self.model_ema is not None:
