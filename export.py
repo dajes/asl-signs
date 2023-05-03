@@ -9,6 +9,7 @@ from tensorflow.python.ops.image_ops_impl import ResizeMethod
 import constants
 from dataset.basic import BasicDataset
 from modeling.transformer import Attention, Mlp
+from modeling.llama import Attention as AttentionLlama, SwiGLUFFNFused
 from utils import seed_everything
 
 CLIP_CONTEXT = 10000
@@ -38,9 +39,9 @@ class Inference(torch.nn.Module):
 
     def compat(self):
         for module in self.model.modules():
-            if isinstance(module, Attention):
+            if isinstance(module, (Attention, AttentionLlama)):
                 module.flash = False
-            if isinstance(module, Mlp):
+            if isinstance(module, (Mlp, SwiGLUFFNFused)):
                 module.export = True
 
     def forward(self, x):
@@ -65,15 +66,20 @@ class Ensemble(torch.nn.Module):
             m.compat()
 
     def forward(self, x):
-        preds = torch.stack([m(x) for m in self.models]).softmax(-1)
+        preds = torch.stack([m(x) for m in self.models])
         if self.method == 'mean':
             ensembled = preds.mean(0)
+        elif self.method == 'probmean':
+            preds = preds.softmax(-1)
+            ensembled = preds.mean(0)
+            ensembled = ensembled / ensembled.sum(-1, keepdims=True)
         elif self.method == 'ranking':
             ensembled = (preds.argsort(-1) + torch.arange(preds.shape[0])[:, None, None] / preds.shape[0]).mean(0)
+            ensembled = ensembled / ensembled.sum(-1, keepdims=True)
         else:
             raise ValueError(f'Unknown method {repr(self.method)}')
 
-        return ensembled / ensembled.sum(-1, keepdims=True)
+        return ensembled
 
 
 if __name__ == '__main__':
