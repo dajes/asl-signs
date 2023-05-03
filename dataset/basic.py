@@ -51,6 +51,8 @@ class BasicDataset(Dataset):
 
     pose_palms = [504, 505]
     pose_elbows = [502, 503]
+    pose_head = list(range(489, 500))
+    pose_shoulders = [500, 501]
 
     lips_center = 13
     min_left_hand = [468, 472, 473, 476, 480, 484, 485, 488]
@@ -66,6 +68,8 @@ class BasicDataset(Dataset):
         *eye_left, *eye_right,
         *pose_elbows,
         *pose_palms,
+        *pose_shoulders,
+        *pose_head,
 
         # minimalistic, about 5% worse but uses only 17 keypoints!
         # lips_center,
@@ -77,7 +81,7 @@ class BasicDataset(Dataset):
         # *list(range(idx_range_pose[0], idx_range_pose[1])),
         # *pose_hands
     })
-    CENTER_AROUND = sorted(set(range(*idx_range_face)) & set(relevant_ids))
+    CENTER_AROUND = sorted((set(range(*idx_range_face)) | set(pose_head)) & set(relevant_ids))
     rids = torch.tensor(relevant_ids)
 
     NORMALIZE = True
@@ -230,11 +234,11 @@ class BasicDataset(Dataset):
                 non_nan = relevant_data[~np.isnan(relevant_data).any(axis=2)]
                 if len(non_nan):
                     relevant_data -= non_nan.mean(0, keepdims=True)[None]
-            relevant_data = self.temporal(relevant_data)
+            # relevant_data = self.temporal(relevant_data)
             relevant_data = self.flippin(relevant_data)
-            relevant_data = self.shiftin(relevant_data)
-            relevant_data = self.rotatin(relevant_data)
-            relevant_data = self.scalin(relevant_data)
+            # relevant_data = self.shiftin(relevant_data)
+            # relevant_data = self.rotatin(relevant_data)
+            # relevant_data = self.scalin(relevant_data)
 
         data = torch.zeros((len(relevant_data), len(self.relevant_ids), self.n_coords), dtype=torch.float32)
         data[:] = torch.from_numpy(relevant_data[:, :, :self.n_coords])
@@ -303,8 +307,9 @@ def __visualize_keypoints():
     plt.show()
 
     relevant = [idx for idx in BasicDataset.relevant_ids if idx >= 468]
+    irrelevant = [idx for idx in range(468, 543) if idx not in BasicDataset.relevant_ids]
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     ax.set_aspect('equal')
     ax.scatter(data[468:, 0], -data[468:, 1], s=3)
     ax.scatter(data[relevant, 0],
@@ -312,6 +317,8 @@ def __visualize_keypoints():
 
     for i, (x, y, _) in zip(relevant, data[relevant]):
         ax.text(x, -y, str(i), fontsize=6, color='orange')
+    for i, (x, y, _) in zip(irrelevant, data[irrelevant]):
+        ax.text(x, -y, str(i), fontsize=6, color='blue')
 
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
