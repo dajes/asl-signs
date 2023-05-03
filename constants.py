@@ -1,7 +1,5 @@
 import os
 
-from experimental.scaling import get_best_scale
-
 TASK = ['find_lr', 'train', 'val'][1]
 DATASET_PATH = r'C:\Data\asl'
 MODELS_PATH = DATASET_PATH + '_models'
@@ -23,30 +21,34 @@ LR = 1e-4
 WEIGHT_DECAY = 1e-4
 LABEL_SMOOTHING = 0.
 OPTIMIZER = 'lion'
-SCHEDULER = '1cycle'
-DEVICES = 1
-WORKERS = 0
-MIXUP = .6
+SCHEDULER = 'cosine'
+DEVICES = 4
+WORKERS = 16
+MIXUP = .5
+MIXUP_ELEMENTS = 2
 
+ARCHITECTURE = 'llama'
 EMA = True
 QAT = False
-MAX_LEN = 256
-N_PARAMETERS = 10E6 / 5
+MAX_LEN = 512
+N_PARAMETERS = 10E6 / 1 / {
+    'lstm': .5
+}.get(ARCHITECTURE, 1)
 N_COORDS = 2
-ARCHITECTURE = 'transformer'
 KV_SIZE = 64
 MLP_RATIO = 4
 DEPTH2WIDTH_RATIO = .52
 
-N_HEADS, N_LAYERS = get_best_scale(N_PARAMETERS, DEPTH2WIDTH_RATIO, 192, MAX_LEN, 250, KV_SIZE, MLP_RATIO)
+N_HEADS = 6
+N_LAYERS = 5
 N_FEATURES = N_HEADS * KV_SIZE
 
 CAUSAL_FRACTION = 0 / 8
 CAUSAL_FORESIGHT = 2 if CAUSAL_FRACTION else 0
 
-DROPOUT = 0.
+DROPOUT = 0.1
 
-assert OPTIMIZER in ['sgd', 'adamw', 'lion', 'radam']
+assert OPTIMIZER in ['sgd', 'adamw', 'lion']
 assert SCHEDULER in ['1cycle', 'cosine']
 
 if not WORKERS:
