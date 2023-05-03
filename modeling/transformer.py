@@ -3,6 +3,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from modeling.llama import RMSNorm
+
 
 class Attention(nn.Module):
     def __init__(self, dim, max_len, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
@@ -100,7 +102,7 @@ class Block(nn.Module):
             qkv_bias=False,
             drop=0.,
             attn_drop=0.,
-            norm_layer=nn.BatchNorm1d
+            norm_layer=RMSNorm
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -110,8 +112,8 @@ class Block(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=int(dim * mlp_ratio), drop=drop)
 
     def forward(self, x, causal=False, attn_mask=None):
-        x = x + self.attn(self.norm1(x.transpose(1, 2)).transpose(1, 2), causal=causal, attn_mask=attn_mask)
-        x = x + self.mlp(self.norm2(x.transpose(1, 2)).transpose(1, 2))
+        x = x + self.attn(self.norm1(x), causal=causal, attn_mask=attn_mask)
+        x = x + self.mlp(self.norm2(x))
         return x
 
 
@@ -130,7 +132,7 @@ class TransformerEncoder(nn.Module):
                 qkv_bias=qkv_bias,
                 drop=drop_rate,
                 attn_drop=drop_rate,
-                norm_layer=nn.BatchNorm1d,
+                norm_layer=RMSNorm,
             )
             for _ in range(depth)
         ])
